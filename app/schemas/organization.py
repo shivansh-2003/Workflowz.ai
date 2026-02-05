@@ -14,3 +14,10 @@ class OrganizationRename(BaseModel):
 
 class OrganizationHeadUpdate(BaseModel):
     new_head_email: EmailStr
+
+
+class OrganizationOut(BaseModel):
+    organization_name: str
+    head_name: str | None = None
+    head_email: str | None = None
+    member_count: int = 0

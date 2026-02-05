@@ -46,7 +46,7 @@ class APIClient:
 
     def get(self, path: str, params: dict | None = None) -> ApiResponse:
         url = f"{self.base_url}{path}"
-        with httpx.Client(timeout=30.0) as client:
+        with httpx.Client(timeout=30.0, follow_redirects=True) as client:
             response = client.get(url, headers=self._headers(), params=params)
         return self._handle_response(response)
 
@@ -58,7 +58,7 @@ class APIClient:
         params: dict | None = None,
     ) -> ApiResponse:
         url = f"{self.base_url}{path}"
-        with httpx.Client(timeout=30.0) as client:
+        with httpx.Client(timeout=30.0, follow_redirects=True) as client:
             response = client.post(
                 url, headers=self._headers(), json=json, data=data, params=params
             )
@@ -68,12 +68,12 @@ class APIClient:
         self, path: str, json: dict | None = None, params: dict | None = None
     ) -> ApiResponse:
         url = f"{self.base_url}{path}"
-        with httpx.Client(timeout=30.0) as client:
+        with httpx.Client(timeout=30.0, follow_redirects=True) as client:
             response = client.patch(url, headers=self._headers(), json=json, params=params)
         return self._handle_response(response)
 
     def delete(self, path: str, params: dict | None = None) -> ApiResponse:
         url = f"{self.base_url}{path}"
-        with httpx.Client(timeout=30.0) as client:
+        with httpx.Client(timeout=30.0, follow_redirects=True) as client:
             response = client.delete(url, headers=self._headers(), params=params)
         return self._handle_response(response)

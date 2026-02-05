@@ -3,7 +3,12 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import bad_request, not_found
-from app.crud.team import create_team_member, get_team_member_by_email, get_team_members
+from app.crud.team import (
+    create_team_member,
+    get_all_organizations,
+    get_team_member_by_email,
+    get_team_members,
+)
 from app.crud.user import get_user_by_email
 from app.database.models import Project, Task, TeamMember, User
 from app.database.session import get_db
@@ -11,11 +16,34 @@ from app.dependencies.auth import get_current_superuser
 from app.schemas.organization import (
     OrganizationCreate,
     OrganizationHeadUpdate,
+    OrganizationOut,
     OrganizationRename,
 )
 from app.schemas.team import TeamMemberOut
 
 router = APIRouter(prefix="/superuser/organizations", tags=["superuser"])
+
+
+@router.get("/", response_model=list[OrganizationOut])
+async def list_organizations(
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+) -> list[OrganizationOut]:
+    """List all organizations with their head info and member count."""
+    org_names = await get_all_organizations(db)
+    organizations = []
+    for org_name in org_names:
+        members = await get_team_members(db, org_name)
+        head = next((m for m in members if m.position == "head"), None)
+        organizations.append(
+            OrganizationOut(
+                organization_name=org_name,
+                head_name=head.name if head else None,
+                head_email=head.email if head else None,
+                member_count=len(members),
+            )
+        )
+    return organizations
 
 
 @router.post("/", response_model=TeamMemberOut)

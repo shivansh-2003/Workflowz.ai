@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, func, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import TeamMember
@@ -63,3 +63,11 @@ async def create_team_member(
     await db.commit()
     await db.refresh(member)
     return member
+
+
+async def get_all_organizations(db: AsyncSession) -> list[str]:
+    """Get all distinct organization names."""
+    result = await db.execute(
+        select(distinct(TeamMember.organization_name))
+    )
+    return [row[0] for row in result.all()]

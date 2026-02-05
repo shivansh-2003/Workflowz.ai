@@ -1,6 +1,6 @@
 import streamlit as st
 
-from components.auth_forms import render_login_form
+from components.auth_forms import render_login_form, render_signup_form
 from components.navigation import render_sidebar
 from utils.state import init_state, require_auth
 
@@ -10,8 +10,16 @@ init_state()
 
 if not require_auth():
     st.title("Workflowz.ai")
-    st.caption("Sign in to manage projects, tasks, and teams.")
-    render_login_form()
+    st.caption("Sign in or create an account to manage projects, tasks, and teams.")
+    
+    tab1, tab2 = st.tabs(["Sign in", "Sign up"])
+    
+    with tab1:
+        render_login_form()
+    
+    with tab2:
+        render_signup_form()
+    
     st.stop()
 
 render_sidebar()

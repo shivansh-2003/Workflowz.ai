@@ -11,3 +11,6 @@ psycopg2-binary
 python-dotenv
 email-validator
 python-multipart
+streamlit
+httpx
+

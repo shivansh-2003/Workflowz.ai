@@ -13,4 +13,7 @@ email-validator
 python-multipart
 streamlit
 httpx
+langchain
+langchain-core
+langchain-ollama
 

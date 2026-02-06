@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
+    OLLAMA_MODEL: str = "gpt-oss:20b"
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
 
 
 settings = Settings()

@@ -49,10 +49,14 @@ with left:
             if not name:
                 st.error("Project name is required.")
             else:
-                create_project(name, description or None, org_name)
-                fetch_projects.clear()
-                st.success("Project created.")
-                st.rerun()
+                try:
+                    create_project(name, description or None, org_name)
+                except Exception as exc:
+                    st.error(f"Create failed: {exc}")
+                else:
+                    fetch_projects.clear()
+                    st.success("Project created.")
+                    st.rerun()
 
 with right:
     if not selected_name:

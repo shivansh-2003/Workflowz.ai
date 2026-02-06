@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import bad_request, forbidden, not_found
@@ -48,9 +49,13 @@ async def create_new_project(
         org_name = org_context.organization_name
         created_by = current_user.email
 
-    project = await create_project(
-        db, org_name, payload.project_name, payload.project_description, created_by
-    )
+    try:
+        project = await create_project(
+            db, org_name, payload.project_name, payload.project_description, created_by
+        )
+    except IntegrityError:
+        await db.rollback()
+        raise bad_request("Project name already exists for this organization.")
     return ProjectOut.model_validate(project)
 
 

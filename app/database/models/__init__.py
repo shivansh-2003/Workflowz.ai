@@ -112,3 +112,5 @@ class Task(Base):
     task_importance: Mapped[Optional[str]] = mapped_column(String(50))
     task_completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+

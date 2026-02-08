@@ -47,3 +47,15 @@ def flush() -> None:
 def get_runnable_config(run_name: str = "orchestrator") -> dict[str, Any]:
     """Return LangChain RunnableConfig with Langfuse callbacks."""
     return {"callbacks": [get_langfuse_handler()], "run_name": run_name}
+
+
+def observe(func: Any | None = None, **kwargs: Any) -> Any:
+    """Langfuse @observe decorator if available, else no-op."""
+    try:
+        from langfuse.decorators import observe as _observe
+        _decorator = _observe(**kwargs)
+        return _decorator(func) if func is not None else _decorator
+    except ImportError:
+        def _noop(f: Any) -> Any:
+            return f
+        return _noop(func) if func is not None else _noop

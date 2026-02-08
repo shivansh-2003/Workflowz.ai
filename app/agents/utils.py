@@ -20,11 +20,15 @@ def run_json_prompt(
     model: Any,
     system_prompt: str,
     user_prompt: str,
+    config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Invoke model and parse response as JSON."""
     messages = [
         SystemMessage(content=system_prompt),
         HumanMessage(content=user_prompt),
     ]
-    response = model.invoke(messages)
+    invoke_kw: dict[str, Any] = {}
+    if config:
+        invoke_kw["config"] = config
+    response = model.invoke(messages, **invoke_kw)
     return extract_json(response.content)

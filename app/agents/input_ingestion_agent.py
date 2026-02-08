@@ -98,6 +98,7 @@ def run_input_ingestion(
     project_name: str = "",
     text_description: str | None = None,
     markdown_content: str | None = None,
+    config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Normalize messy human input into clean structured context.
@@ -135,7 +136,7 @@ def run_input_ingestion(
 
     try:
         model = get_chat_model()
-        raw = run_json_prompt(model, INPUT_INGESTION_SYSTEM, user_prompt)
+        raw = run_json_prompt(model, INPUT_INGESTION_SYSTEM, user_prompt, config=config)
     except ValueError as e:
         logger.error("InputIngestionAgent:parse_error %s", e)
         return {

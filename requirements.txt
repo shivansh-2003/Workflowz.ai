@@ -16,4 +16,6 @@ httpx
 langchain
 langchain-core
 langchain-ollama
+langgraph
+langfuse
 

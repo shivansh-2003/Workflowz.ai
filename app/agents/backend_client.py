@@ -1,12 +1,15 @@
-"""Backend API client for fetching data from FastAPI server."""
+"""Backend API client for fetching data from FastAPI server or database."""
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from app.agents.utils import build_team_capability_model
 from app.core.config import settings
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +38,7 @@ async def fetch_team_capability_model(
         headers = {"Authorization": f"Bearer {auth_token}"}
     else:
         url = f"{BACKEND_URL}/teams/internal/capability-model"
-        # Use mock data when database is unavailable
-        params = {"organization_name": organization_name, "use_mock": "true"}
+        params = {"organization_name": organization_name}
         headers = {}
 
     try:
@@ -108,8 +110,7 @@ def fetch_team_capability_model_sync(
         headers = {"Authorization": f"Bearer {auth_token}"}
     else:
         url = f"{BACKEND_URL}/teams/internal/capability-model"
-        # Use mock data when database is unavailable
-        params = {"organization_name": organization_name, "use_mock": "true"}
+        params = {"organization_name": organization_name}
         headers = {}
 
     try:
@@ -154,3 +155,30 @@ def fetch_team_capability_model_sync(
     except Exception as e:
         logger.exception("BackendClient:unexpected_error")
         return build_team_capability_model([])
+
+
+async def fetch_team_capability_model_from_db(
+    db: "AsyncSession", organization_name: str
+) -> dict[str, Any]:
+    """
+    Fetch team members from database (direct CRUD) and build capability model.
+    Used by background pipeline when running inside FastAPI (no HTTP self-call).
+    """
+    from app.crud.team import get_team_members
+
+    members = await get_team_members(db, organization_name)
+    team_members = []
+    for m in members:
+        designation = m.designation or (
+            "head" if m.position == "head" else "backend"
+        )
+        seniority = "senior" if m.position == "head" else "mid"
+        team_members.append(
+            {"member_id": m.member_id, "designation": designation, "seniority": seniority}
+        )
+    logger.info(
+        "BackendClient:fetch_from_db fetched %d members for org=%s",
+        len(team_members),
+        organization_name,
+    )
+    return build_team_capability_model(team_members)

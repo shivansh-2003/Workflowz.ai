@@ -14,6 +14,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -113,4 +114,33 @@ class Task(Base):
     task_completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
+
+class AIWorkflowState(Base):
+    """Tracks AI orchestrator state per project for background task execution."""
+
+    __tablename__ = "ai_workflow_state"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_name", "project_id"],
+            ["projects.organization_name", "projects.project_id"],
+            name="ai_workflow_state_project_fk",
+            ondelete="CASCADE",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    organization_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    project_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    current_state: Mapped[str] = mapped_column(String(50), nullable=False)
+    state_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    last_successful_state: Mapped[Optional[str]] = mapped_column(String(50))
+    locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    error: Mapped[Optional[str]] = mapped_column(Text)
+    agent_outputs: Mapped[Optional[dict]] = mapped_column(JSONB)
+    clarification_answers: Mapped[Optional[dict]] = mapped_column(JSONB)
+    thread_id: Mapped[Optional[str]] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
 

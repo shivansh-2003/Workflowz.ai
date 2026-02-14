@@ -348,6 +348,7 @@ def run_orchestrator(
     markdown_content: str | None = None,
     organization_name: str | None = None,
     auth_token: str | None = None,
+    team_capability_model: dict[str, Any] | None = None,
     thread_id: str | None = None,
 ) -> dict[str, Any]:
     """
@@ -359,6 +360,7 @@ def run_orchestrator(
         markdown_content: README, PRD, architecture doc, etc.
         organization_name: Organization name to fetch team members (for task decomposition)
         auth_token: Optional JWT token for backend authentication
+        team_capability_model: Optional pre-fetched team model (avoids HTTP self-call when from DB)
         thread_id: Required for human-in-the-loop. Use same ID to resume after answers.
 
     Outputs:
@@ -378,6 +380,7 @@ def run_orchestrator(
         "markdown_content": markdown_content,
         "organization_name": organization_name,
         "auth_token": auth_token,
+        "team_capability_model": team_capability_model,
         "stages": [],
     }
 
@@ -456,3 +459,191 @@ def run_orchestrator_resume(thread_id: str, answers: dict[str, Any]) -> dict[str
         "matching_output": final_state.get("matching_output"),
         "risk_output": final_state.get("risk_output"),
     }
+
+
+def _state_to_agent_outputs(state: dict[str, Any]) -> dict[str, Any]:
+    """Build agent_outputs dict for DB persistence."""
+    return {
+        "stages": state.get("stages", []),
+        "ingestion_output": state.get("ingestion_output"),
+        "arch_output": state.get("arch_output"),
+        "clarification_output": state.get("clarification_output"),
+        "task_output": state.get("task_output"),
+        "team_capability_model": state.get("team_capability_model"),
+        "matching_output": state.get("matching_output"),
+        "risk_output": state.get("risk_output"),
+    }
+
+
+async def run_pipeline_background(
+    project_id: int,
+    organization_name: str,
+    workflow_id: int,
+) -> None:
+    """
+    Run AI pipeline as background task with DB persistence.
+    Fetches project and team from DB, runs orchestrator, updates workflow state.
+    """
+    from app.crud.ai_workflow import (
+        get_workflow_state_by_id,
+        update_workflow_state,
+        set_workflow_error,
+    )
+    from app.crud.project import get_project
+    from app.agents.backend_client import fetch_team_capability_model_from_db
+    from app.database.session import AsyncSessionLocal
+    import asyncio
+
+    async with AsyncSessionLocal() as db:
+        try:
+            workflow = await get_workflow_state_by_id(db, workflow_id)
+            if not workflow or workflow.organization_name != organization_name or workflow.project_id != project_id:
+                logger.error("run_pipeline_background: workflow not found")
+                return
+
+            project = await get_project(db, organization_name, project_id)
+            if not project:
+                await set_workflow_error(db, workflow, "Project not found")
+                return
+
+            team_model = await fetch_team_capability_model_from_db(db, organization_name)
+            outputs = workflow.agent_outputs or {}
+            text_desc = outputs.get("text_description") or getattr(project, "project_description", None) or ""
+            markdown = outputs.get("markdown_content")
+
+            result = await asyncio.to_thread(
+                run_orchestrator,
+                project_name=getattr(project, "project_name", ""),
+                text_description=text_desc,
+                markdown_content=markdown,
+                organization_name=organization_name,
+                auth_token=None,
+                team_capability_model=team_model,
+                thread_id=workflow.thread_id or None,
+            )
+
+            if result.get("__interrupt__"):
+                existing = workflow.agent_outputs or {}
+                merged = {
+                    **existing,
+                    "stages": result.get("stages", []),
+                    "questions": result.get("questions", []),
+                    "clarification_output": {"questions": result.get("questions", [])},
+                }
+                await update_workflow_state(
+                    db,
+                    workflow,
+                    current_state="WAIT_FOR_USER",
+                    locked=True,
+                    agent_outputs=merged,
+                )
+                logger.info("run_pipeline_background: paused at WAIT_FOR_USER")
+            else:
+                full_outputs = _state_to_agent_outputs(
+                    {
+                        "stages": result.get("stages", []),
+                        "ingestion_output": result.get("final_output"),
+                        "arch_output": result.get("arch_output", {}),
+                        "clarification_output": result.get("clarification_output", {}),
+                        "task_output": result.get("task_output"),
+                        "team_capability_model": result.get("team_capability_model"),
+                        "matching_output": result.get("matching_output"),
+                        "risk_output": result.get("risk_output"),
+                    }
+                )
+                full_outputs["task_output"] = result.get("task_output")
+                full_outputs["team_capability_model"] = result.get("team_capability_model")
+                full_outputs["matching_output"] = result.get("matching_output")
+                full_outputs["risk_output"] = result.get("risk_output")
+                full_outputs["stages"] = result.get("stages", [])
+
+                await update_workflow_state(
+                    db,
+                    workflow,
+                    current_state="HUMAN_APPROVAL",
+                    locked=False,
+                    agent_outputs=full_outputs,
+                    thread_id=workflow.thread_id,
+                )
+                logger.info("run_pipeline_background: completed HUMAN_APPROVAL")
+
+        except Exception as e:
+            logger.exception("run_pipeline_background: error %s", e)
+            try:
+                workflow = await get_workflow_state_by_id(db, workflow_id)
+                if workflow:
+                    await set_workflow_error(db, workflow, str(e))
+            except Exception:
+                pass
+
+
+async def run_pipeline_resume_background(workflow_id: int) -> None:
+    """
+    Resume pipeline after clarification answers. Updates workflow state.
+    """
+    from app.crud.ai_workflow import get_workflow_state_by_id, update_workflow_state, set_workflow_error
+    from app.database.session import AsyncSessionLocal
+    import asyncio
+
+    async with AsyncSessionLocal() as db:
+        try:
+            workflow = await get_workflow_state_by_id(db, workflow_id)
+            if not workflow:
+                logger.error("run_pipeline_resume_background: workflow not found")
+                return
+            if workflow.current_state != "WAIT_FOR_USER":
+                logger.warning("run_pipeline_resume_background: workflow not in WAIT_FOR_USER")
+                return
+
+            answers = workflow.clarification_answers or {}
+            thread_id = workflow.thread_id
+            if not thread_id:
+                await set_workflow_error(db, workflow, "Missing thread_id for resume")
+                return
+
+            result = await asyncio.to_thread(run_orchestrator_resume, thread_id, answers)
+
+            if result.get("__interrupt__"):
+                await update_workflow_state(
+                    db,
+                    workflow,
+                    current_state="WAIT_FOR_USER",
+                    locked=True,
+                    agent_outputs={
+                        **(workflow.agent_outputs or {}),
+                        "questions": result.get("questions", []),
+                        "stages": result.get("stages", []),
+                    },
+                )
+            else:
+                full_outputs = _state_to_agent_outputs(
+                    {
+                        "stages": result.get("stages", []),
+                        "task_output": result.get("task_output"),
+                        "team_capability_model": result.get("team_capability_model"),
+                        "matching_output": result.get("matching_output"),
+                        "risk_output": result.get("risk_output"),
+                    }
+                )
+                existing = workflow.agent_outputs or {}
+                full_outputs["ingestion_output"] = existing.get("ingestion_output")
+                full_outputs["arch_output"] = existing.get("arch_output")
+                full_outputs["clarification_output"] = existing.get("clarification_output")
+
+                await update_workflow_state(
+                    db,
+                    workflow,
+                    current_state="HUMAN_APPROVAL",
+                    locked=False,
+                    agent_outputs=full_outputs,
+                )
+                logger.info("run_pipeline_resume_background: completed HUMAN_APPROVAL")
+
+        except Exception as e:
+            logger.exception("run_pipeline_resume_background: error %s", e)
+            try:
+                workflow = await get_workflow_state_by_id(db, workflow_id)
+                if workflow:
+                    await set_workflow_error(db, workflow, str(e))
+            except Exception:
+                pass

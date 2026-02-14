@@ -52,3 +52,41 @@ def run_json_prompt(
         invoke_kw["config"] = config
     response = model.invoke(messages, **invoke_kw)
     return extract_json(response.content)
+
+
+def build_team_capability_model(team_members: list[dict[str, Any]]) -> dict[str, Any]:
+    """
+    Build team capability model from team members.
+
+    Input: team_members: [{ member_id, designation, seniority }, ...]
+    Output: { team_size, capabilities, missing_capabilities, load_capacity }
+    """
+    if not team_members:
+        return {
+            "team_size": 0,
+            "capabilities": [],
+            "missing_capabilities": ["backend", "frontend", "qa", "devops"],
+            "load_capacity": {},
+        }
+
+    team_size = len(team_members)
+    capabilities = []
+    load_capacity = {}
+
+    for member in team_members:
+        designation = member.get("designation", "unknown")
+        if designation not in capabilities:
+            capabilities.append(designation)
+        # Simple load capacity: count members per role
+        load_capacity[designation] = load_capacity.get(designation, 0) + 1
+
+    # Missing capabilities: standard roles not present
+    all_roles = ["backend", "frontend", "qa", "devops", "head"]
+    missing_capabilities = [r for r in all_roles if r not in capabilities]
+
+    return {
+        "team_size": team_size,
+        "capabilities": capabilities,
+        "missing_capabilities": missing_capabilities,
+        "load_capacity": load_capacity,
+    }

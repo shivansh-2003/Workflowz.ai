@@ -118,6 +118,11 @@ def run_input_ingestion(
     is_structured, structure_density = _is_structured_input(combined)
 
     user_prompt = _build_user_prompt(project_name, text_description, markdown_content)
+    
+    # Inform the LLM about structure quality so it can preserve high-quality input
+    if is_structured:
+        user_prompt += f"\n\n**Note:** Input appears well-structured (structure confidence: {structure_density:.2f}). Preserve original structure via schema mapping + annotations. Do NOT rewrite."
+    
     if not user_prompt.strip() or user_prompt == "No project name, description, or markdown provided.":
         logger.warning("InputIngestionAgent:no_input")
         return {

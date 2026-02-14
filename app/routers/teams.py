@@ -12,6 +12,34 @@ from app.schemas.team import TeamMemberCreate, TeamMemberOut
 router = APIRouter(prefix="/teams", tags=["teams"])
 
 
+@router.get("/internal/capability-model", response_model=list[TeamMemberOut])
+async def get_team_for_agents(
+    organization_name: str = Query(..., description="Organization name"),
+    use_mock: bool = Query(default=False, description="Use mock data (for testing when DB is unavailable)"),
+    db: AsyncSession = Depends(get_db),
+) -> list[TeamMemberOut]:
+    """Internal endpoint for AI agents to fetch team capability model. No auth required."""
+    if not organization_name:
+        raise bad_request("organization_name is required.")
+    
+    # Use mock data if requested or if database is unavailable
+    if use_mock:
+        from app.agents.mock_team_data import get_mock_team
+        mock_data = get_mock_team(organization_name)
+        return [TeamMemberOut.model_validate(m) for m in mock_data]
+    
+    try:
+        members = await get_team_members(db, organization_name)
+        return [TeamMemberOut.model_validate(member) for member in members]
+    except Exception as e:
+        # Fallback to mock data if database query fails
+        from app.agents.mock_team_data import get_mock_team
+        mock_data = get_mock_team(organization_name)
+        if mock_data:
+            return [TeamMemberOut.model_validate(m) for m in mock_data]
+        raise e
+
+
 @router.get("/", response_model=list[TeamMemberOut])
 async def list_team_members(
     organization_name: str | None = Query(default=None),

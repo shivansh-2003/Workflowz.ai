@@ -44,8 +44,7 @@ def _normalize_output(raw: dict[str, Any]) -> dict[str, Any]:
 
 def run_architecture_context(
     structured_project_context: dict[str, Any],
-    ingestion_confidence: float = 0.0,
-    config: dict[str, Any] | None = None,
+    ingestion_confidence: float = 0.0,    config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Classify system and identify architectural invariants.

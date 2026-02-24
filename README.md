@@ -1,6 +1,6 @@
 # Workflowz.ai
 
-A comprehensive project management platform built with FastAPI backend and Streamlit frontend, designed to help teams organize, track, and manage projects, tasks, and team members with role-based access control and multi-tenancy support.
+A comprehensive project management platform built with FastAPI backend and Streamlit frontend, designed to help teams organize, track, and manage projects, tasks, and team members with role-based access control, multi-tenancy support, and **AI-powered task planning**.
 
 ## 📋 Table of Contents
 
@@ -25,6 +25,7 @@ Workflowz.ai is a project management tool that enables teams to:
 - **Track projects** with automatic progress calculation based on task completion
 - **Assign tasks** with priorities, deadlines, and status tracking
 - **Collaborate** across multiple projects within an organization
+- **Generate task plans with AI** — describe a project and get decomposed tasks, role assignments, and risk analysis
 
 The platform uses **multi-tenancy** to ensure data isolation between organizations and implements **RBAC (Role-Based Access Control)** to manage permissions at different levels.
 
@@ -60,8 +61,16 @@ The platform uses **multi-tenancy** to ensure data isolation between organizatio
 - Track member designations
 - View team composition
 
+### AI-Powered Task Planning
+- Generate task plans from project descriptions
+- Multi-agent pipeline: Input Ingestion → Architecture Context → Clarification (HITL) → Task Decomposition → Role Matching → Validation & Risk
+- Human-in-the-loop clarification questions
+- Approve and persist tasks to the database
+- Team capability–aware task assignment
+
 ### User Interface
-- Modern Streamlit-based web interface
+- Modern Streamlit-based web interface (workflowz-ui)
+- AI Assistant integrated in Projects page
 - Responsive design
 - Real-time updates
 - Intuitive navigation
@@ -77,10 +86,13 @@ The platform uses **multi-tenancy** to ensure data isolation between organizatio
 - **JWT (python-jose)** - Token-based authentication
 - **Passlib[bcrypt]** - Password hashing
 - **AsyncPG** - Async PostgreSQL driver
+- **LangGraph** - Agent orchestration
+- **Ollama** - Local LLM (configurable model)
+- **Langfuse** (optional) - Observability and tracing
 
 ### Frontend
 - **Streamlit** - Python web app framework
-- **httpx** - Async HTTP client for API calls
+- **httpx** - HTTP client for API calls
 - **python-dotenv** - Environment variable management
 
 ## 🏗 Architecture
@@ -95,12 +107,15 @@ The platform uses **multi-tenancy** to ensure data isolation between organizatio
 ┌────────▼────────┐
 │   FastAPI       │  (Backend - app/)
 │   (Port 8000)   │
-└────────┬────────┘
-         │ SQLAlchemy ORM
-         │ (Async)
-┌────────▼────────┐
-│   PostgreSQL     │  (Database)
-└─────────────────┘
+└────┬───┬────────┘
+     │   │
+     │   └──────────────┐
+     │ SQLAlchemy       │ Ollama / LLM
+     │ (Async)          │ (Port 11434)
+┌────▼────────┐   ┌─────▼─────────────┐
+│  PostgreSQL │   │  AI Agents        │
+│  (Database) │   │  (LangGraph)     │
+└─────────────┘   └──────────────────┘
 ```
 
 ### Key Components
@@ -109,73 +124,98 @@ The platform uses **multi-tenancy** to ensure data isolation between organizatio
    - RESTful API endpoints
    - Authentication & authorization
    - CRUD operations
+   - AI workflow router (`/projects/{id}/ai/*`)
    - Business logic
 
-2. **Frontend UI** (`workflowz-ui/`)
+2. **AI Agents** (`app/agents/`)
+   - Input Ingestion, Architecture Context, Clarification
+   - Task Decomposition, Role-Task Matching, Validation & Risk
+   - LangGraph-based orchestration with checkpointing
+   - Background pipeline execution with DB persistence
+
+3. **Frontend UI** (`workflowz-ui/`)
    - Streamlit pages for different views
+   - AI Assistant in Projects page (generate plan, clarify, approve)
    - API client services
    - State management
    - User interface components
 
-3. **Database**
+4. **Database**
    - PostgreSQL with async operations
    - Alembic for migrations
    - Multi-tenant schema design
+   - `ai_workflow_state` table for pipeline state
 
 ## 📁 Project Structure
 
 ```
 workflowz_ai/
 ├── app/                          # FastAPI backend
+│   ├── agents/                   # AI agent pipeline
+│   │   ├── orchestrator.py      # LangGraph orchestration
+│   │   ├── input_ingestion_agent.py
+│   │   ├── architecture_context_agent.py
+│   │   ├── clarification_agent.py
+│   │   ├── task_decomposition_agent.py
+│   │   ├── role_task_matching_agent.py
+│   │   ├── validation_risk_agent.py
+│   │   ├── backend_client.py    # Team/DB data for agents
+│   │   ├── prompts.py
+│   │   ├── utils.py
+│   │   └── llm_config.py
 │   ├── core/                     # Core configuration
 │   │   ├── config.py             # Settings and environment variables
 │   │   ├── security.py           # Password hashing, JWT tokens
-│   │   └── exceptions.py        # Custom exceptions
+│   │   └── exceptions.py         # Custom exceptions
 │   ├── database/                 # Database setup
-│   │   ├── models/              # SQLAlchemy ORM models
-│   │   └── session.py           # Database session management
+│   │   ├── models/               # SQLAlchemy ORM models
+│   │   └── session.py            # Database session management
 │   ├── crud/                     # Database operations
 │   │   ├── user.py
 │   │   ├── team.py
 │   │   ├── project.py
-│   │   └── task.py
+│   │   ├── task.py
+│   │   └── ai_workflow.py       # AI workflow state CRUD
 │   ├── routers/                  # API route handlers
 │   │   ├── auth.py              # Authentication endpoints
 │   │   ├── superuser.py         # Superuser operations
 │   │   ├── teams.py             # Team management
-│   │   ├── projects.py         # Project CRUD
-│   │   └── tasks.py             # Task CRUD
+│   │   ├── projects.py          # Project CRUD
+│   │   ├── tasks.py             # Task CRUD
+│   │   └── ai.py                # AI workflow endpoints
 │   ├── schemas/                  # Pydantic models
 │   │   ├── auth.py
 │   │   ├── organization.py
 │   │   ├── team.py
 │   │   ├── project.py
-│   │   └── task.py
-│   ├── dependencies/             # FastAPI dependencies
-│   │   ├── auth.py              # Auth dependencies
-│   │   └── tenancy.py           # Multi-tenancy helpers
+│   │   ├── task.py
+│   │   └── ai_workflow.py
+│   ├── dependencies/            # FastAPI dependencies
+│   │   ├── auth.py
+│   │   └── tenancy.py
 │   └── main.py                  # FastAPI app entry point
 │
 ├── workflowz-ui/                 # Streamlit frontend
 │   ├── app.py                   # Main entry point
 │   ├── components/              # Reusable UI components
-│   │   ├── auth_forms.py       # Login/signup forms
-│   │   ├── navigation.py        # Sidebar navigation
-│   │   └── progress_bars.py    # Progress visualization
-│   ├── pages/                   # Streamlit pages
+│   │   ├── auth_forms.py
+│   │   ├── navigation.py
+│   │   └── progress_bars.py
+│   ├── pages/
 │   │   ├── 1_Dashboard.py
-│   │   ├── 2_Projects.py
+│   │   ├── 2_Projects.py       # Includes AI Assistant
 │   │   ├── 3_Tasks.py
 │   │   ├── 4_Team.py
 │   │   └── 5_Settings.py
-│   ├── services/                # API client services
-│   │   ├── api_client.py       # Base HTTP client
+│   ├── services/
+│   │   ├── api_client.py
 │   │   ├── auth_service.py
 │   │   ├── project_service.py
 │   │   ├── task_service.py
 │   │   ├── team_service.py
-│   │   └── superuser_service.py
-│   └── utils/                   # Utility functions
+│   │   ├── superuser_service.py
+│   │   └── ai_service.py      # AI workflow API calls
+│   └── utils/
 │       ├── config.py
 │       ├── formatters.py
 │       ├── jwt.py
@@ -197,6 +237,7 @@ workflowz_ai/
 
 - Python 3.11+ (recommended)
 - PostgreSQL 14+ (or use Supabase/cloud PostgreSQL)
+- [Ollama](https://ollama.ai) (for AI task planning; optional if not using AI)
 - `pip` package manager
 
 ### Backend Setup
@@ -229,6 +270,16 @@ workflowz_ai/
    SECRET_KEY=your-secret-key-here-change-this
    ALGORITHM=HS256
    ACCESS_TOKEN_EXPIRE_MINUTES=10080  # 7 days
+
+   # AI / LLM (Ollama)
+   OLLAMA_BASE_URL=http://localhost:11434
+   OLLAMA_MODEL=gpt-oss:20b
+
+   # Langfuse (optional, for tracing)
+   # LANGFUSE_PUBLIC_KEY=
+   # LANGFUSE_SECRET_KEY=
+   # LANGFUSE_BASE_URL=https://cloud.langfuse.com
+   # LANGFUSE_ENABLED=false
    ```
 
 5. **Set up PostgreSQL database**
@@ -247,8 +298,15 @@ workflowz_ai/
    ```bash
    alembic upgrade head
    ```
+   > **Note:** If you have a legacy `ai_workflow_state` table, migrations `add_agent_outputs`, `add_thread_id`, and `add_id_ai_workflow` will align the schema.
 
-7. **Start the backend server**
+7. **Start Ollama** (for AI features)
+   ```bash
+   ollama serve
+   ollama pull gpt-oss:20b   # or your preferred model
+   ```
+
+8. **Start the backend server**
    ```bash
    uvicorn app.main:app --reload
    ```
@@ -310,6 +368,12 @@ workflowz_ai/
    - Go to Projects page → Create project
    - Go to Tasks page → Select project → Create task
 
+5. **Generate tasks with AI** (Organization Head or Superuser)
+   - Go to Projects page → Select a project
+   - Expand "AI Assistant" → Enter optional description/markdown
+   - Click "Start AI pipeline" → Answer clarification questions if prompted
+   - Review plan → Click "Approve & create tasks" to persist
+
 ## 📚 API Documentation
 
 ### Base URL
@@ -355,6 +419,14 @@ Authorization: Bearer <token>
 - `PATCH /api/tasks/{task_id}` - Update task
 - `DELETE /api/tasks/{task_id}` - Delete task
 
+#### AI Workflow (`/api/projects/{project_id}/ai`)
+- `POST /api/projects/{project_id}/ai/generate` - Start AI pipeline (202 Accepted)
+- `GET /api/projects/{project_id}/ai/status` - Poll workflow state
+- `GET /api/projects/{project_id}/ai/plan` - Get generated plan (when in HUMAN_APPROVAL)
+- `POST /api/projects/{project_id}/ai/clarification` - Submit clarification answers
+- `POST /api/projects/{project_id}/ai/approve` - Approve and persist tasks
+- `POST /api/projects/{project_id}/ai/reject` - Reject plan
+
 ### Interactive API Documentation
 
 Once the backend is running, visit:
@@ -374,6 +446,7 @@ Once the backend is running, visit:
    - List all projects in organization
    - Create/edit/delete projects
    - View project progress
+   - **AI Assistant** (Head/Superuser): Generate task plans, answer clarifications, approve/reject
 
 3. **Tasks** (`/Tasks`)
    - Filter tasks by project
@@ -439,11 +512,25 @@ Once the backend is running, visit:
 - `task_completed` - Boolean completion status
 - `created_at` - Timestamp
 
+#### `ai_workflow_state`
+- `id` (PK) - Auto-incrementing workflow ID
+- `organization_name` (FK → projects) - Organization identifier
+- `project_id` (FK → projects) - Project reference
+- `current_state` - Pipeline state (INPUT_INGESTION, WAIT_FOR_USER, HUMAN_APPROVAL, etc.)
+- `state_version`, `last_successful_state` - State tracking
+- `locked` - Whether waiting for user input
+- `error` - Error message if failed
+- `agent_outputs` (JSONB) - All agent results
+- `clarification_answers` (JSONB) - User answers
+- `thread_id` - LangGraph checkpoint thread
+- `created_at`, `updated_at` - Timestamps
+
 ### Relationships
 
 - Users → Team Members (1:many)
 - Organizations → Projects (1:many via `organization_name`)
 - Projects → Tasks (1:many via composite key)
+- Projects → AI Workflow State (1:many, latest used for status)
 - Team Members → Tasks (1:many via `task_assigned_to`)
 
 ## 📊 Sample Data

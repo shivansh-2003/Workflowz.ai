@@ -8,6 +8,7 @@ The Streamlit frontend provides a user-friendly interface for:
 - User authentication (login/signup)
 - Dashboard with project overview
 - Project management (create, edit, delete)
+- **AI Assistant** — generate task plans from project descriptions (Head/Superuser)
 - Task management (assign, track, complete)
 - Team management (view members, add/remove)
 - Settings and user management
@@ -78,7 +79,8 @@ workflowz-ui/
 │   ├── project_service.py     # Project API calls
 │   ├── task_service.py        # Task API calls
 │   ├── team_service.py       # Team API calls
-│   └── superuser_service.py  # Superuser API calls
+│   ├── superuser_service.py  # Superuser API calls
+│   └── ai_service.py         # AI workflow API calls
 ├── utils/                       # Utility functions
 │   ├── config.py              # Configuration loading
 │   ├── formatters.py          # Date and data formatting
@@ -111,6 +113,7 @@ workflowz-ui/
 - Edit project details
 - Delete projects
 - View project progress bars
+- **AI Assistant** (Head/Superuser): Generate task plans, answer clarification questions, approve/reject and persist tasks
 
 #### 3. Tasks (`/Tasks`)
 - Filter tasks by project
